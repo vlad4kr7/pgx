@@ -89,7 +89,7 @@ impl<'a> PgHeapTuple<'a, AllocatedByPostgres> {
 
     /// Creates a new [PgHeapTuple] from one of the two (`Current` or `New`) trigger tuples.  The returned
     /// [PgHeapTuple] will be considered by have been allocated by Postgres and is not mutable until
-    /// [PgHeapTuple::into_owned] is called.  
+    /// [PgHeapTuple::into_owned] is called.
     ///
     /// ## Safety
     ///
@@ -350,7 +350,7 @@ impl<'a, AllocatedBy: WhoAllocated> PgHeapTuple<'a, AllocatedBy> {
         self.tupdesc.iter().enumerate().map(|(i, att)| (NonZeroUsize::new(i + 1).unwrap(), att))
     }
 
-    /// Get the attribute information for the specified attribute number.  
+    /// Get the attribute information for the specified attribute number.
     ///
     /// Returns `None` if the attribute number is out of bounds.
     #[inline]
@@ -436,6 +436,30 @@ impl<'a, AllocatedBy: WhoAllocated> PgHeapTuple<'a, AllocatedBy> {
                 }
             }
         }
+    }
+
+    /// SPI_getvalue, Postgres SQL interface to Datum,
+    pub fn spi_getvalue(&self, attno: NonZeroUsize) -> Result<Option<String>, TryFromDatumError> {
+        // SPI_getvalue
+        let ptr = unsafe {
+            pg_sys::SPI_getvalue(self.tuple.as_ptr(), self.tupdesc.as_ptr(), attno.get() as i32)
+        };
+        if ptr.is_null() {
+            return match unsafe { pg_sys::SPI_result } {
+                pgx_pg_sys::SPI_ERROR_NOATTRIBUTE | pgx_pg_sys::SPI_ERROR_NOOUTFUNC => {
+                    Err(TryFromDatumError::NullDatumPointer)
+                }
+                _ => Ok(None),
+            };
+        }
+
+        // convert to String
+        let str = unsafe { core::ffi::CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+        unsafe {
+            pg_sys::pfree(ptr as *mut _);
+        }
+
+        Ok(Some(str))
     }
 }
 
