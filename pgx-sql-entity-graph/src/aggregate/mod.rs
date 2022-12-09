@@ -826,7 +826,7 @@ fn get_const_litstr<'a>(item: &'a ImplItemConst) -> syn::Result<Option<String>> 
         },
         syn::Expr::Call(expr_call) => match &*expr_call.func {
             syn::Expr::Path(expr_path) => {
-                let Some(last) = expr_path.path.segments.last() else {
+                let last = if let Some(last) = expr_path.path.segments.last()  { last } else {
                     return Ok(None);
                 };
                 if last.ident.to_string() == "Some" {
